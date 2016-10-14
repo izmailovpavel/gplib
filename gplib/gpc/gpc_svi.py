@@ -8,7 +8,7 @@ from ..optim.methods import climin_wrapper, sgd, scipy_wrapper
 from ..gpres import GPRes
 
 
-class SVIMethod():
+class SVIMethod:
     def __init__(self, cov, method_options):
         self.cov = copy.deepcopy(cov)
         hermgauss_deg = _extract_and_delete(method_options, 'hermgauss_deg', 100)
@@ -118,24 +118,24 @@ class SVIMethod():
         inducing_inputs = (inputs, mu, sigma)
         return inducing_inputs, theta, GPRes(param_lst=w_list, time_lst=time_list)
 
-    # def _get_prediction_quality(self, params, test_points, test_targets):
-    #     """
-    #     Returns prediction quality on the test set for the given kernel (and inducing points) parameters for the means
-    #     method
-    #     :param params: parameters
-    #     :param test_points: test set points
-    #     :param test_targets: test set target values
-    #     :return: prediction MSE
-    #     """
-    #     new_gp = deepcopy(self)
-    #     theta, mu, Sigma_L = new_gp._get_parameters(params)
-    #     Sigma = Sigma_L.dot(Sigma_L.T)
-    #     # theta = params[:len(new_gp.cov.get_params())]
-    #     new_gp.cov.set_params(theta)
-    #     new_gp.inducing_inputs = (new_gp.inducing_inputs[0], mu, Sigma)
-    #     predicted_y_test = new_gp.predict(test_points)
-    #     return 1 - np.sum(test_targets != predicted_y_test) / test_targets.size
-    #     # return f1_score(test_targets, predicted_y_test)
+
+    def get_prediction_quality(self, gp_obj, params, x_test, y_test):
+        """
+        Returns prediction quality on the test set for the given kernel (and inducing points) parameters for the means
+        method
+        :param params: parameters
+        :param x_test: test set points
+        :param y_test: test set target values
+        :return: prediction accuracy
+        """
+        new_gp = copy.deepcopy(gp_obj)
+        theta, mu, Sigma_L = self._get_parameters(params)
+        Sigma = Sigma_L.dot(Sigma_L.T)
+        # theta = params[:len(new_gp.cov.get_params())]
+        new_gp.cov.set_params(theta)
+        new_gp.inducing_inputs = (new_gp.inducing_inputs[0], mu, Sigma)
+        predicted_y_test = new_gp.predict(x_test)
+        return 1 - np.sum(y_test != predicted_y_test) / y_test.size
 
     def _elbo_batch_approx_oracle(self, data_points, target_values, inducing_inputs, parameter_vec,
                                        indices, N=None):
