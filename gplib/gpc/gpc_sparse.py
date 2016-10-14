@@ -10,6 +10,8 @@ from .gpc_base import GPC
 from ..covfun.utility import sigmoid
 from .gpc_svi import SVIMethod
 from .gpc_vi_jj import VIJJMethod
+from .gpc_vi_taylor import VITaylorMethod
+from .gpc_vi_jj_full import VIJJFullMethod
 from ..gpres import GPRes
 
 
@@ -46,6 +48,12 @@ class GPCSparse(GPC):
 			method = SVIMethod(self.cov, method_options)
 		elif method_name == 'vi_jj':
 			method = VIJJMethod(self.cov, method_options)
+		elif method_name == 'vi_taylor':
+			method = VITaylorMethod(self.cov, method_options)
+		elif method_name == 'vi_jj_full':
+			method = VIJJFullMethod(self.cov, method_options, method_type='full')
+		elif method_name == 'vi_jj_hybrid':
+			method = VIJJFullMethod(self.cov, method_options, method_type='hybrid')
 		return method
 
 	def predict(self, test_points):
