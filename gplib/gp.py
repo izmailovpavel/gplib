@@ -1,32 +1,46 @@
 import numpy as np
-from abc import ABCMeta, abstractmethod
-from GP.optim import _eig_val_correction
 import numbers
+from abc import ABCMeta
+
+from .covfun import CovarianceFamily
+
 
 class GP:
     """
-    An abstract class, a base class for GPR and GPC
+    An abstract class, a base class for Gaussian Process
     """
     __metaclass__ = ABCMeta
 
-    @staticmethod
-    def sample(mean_func, cov_func, points, seed=None):
+    def __init__(self, cov_obj, mean_function=lambda x: 0):
+        """
+        :param cov_obj: object of the CovarianceFamily class
+        :param mean_function: function, mean of the gaussian process
+        """
+        if not isinstance(cov_obj, CovarianceFamily):
+            raise TypeError("The covariance object cov_obj is of the wrong type")
+        if not hasattr(mean_function, '__call__'):
+            raise TypeError("mean_function must be callable")
+
+        self.cov = cov_obj
+        self.mean = mean_function
+
+    def sample(self, points, seed=None):
         """
         :param mean_func: mean function
         :param cov_func: covariance function
         :param points: data points
         :return: sample gaussian process values at given points
         """
-        if not hasattr(cov_func, '__call__'):
-            raise TypeError("cov_func must be callable")
-        if not hasattr(mean_func, '__call__'):
-            raise TypeError("mean_func must be callable")
+        if not hasattr(self.cov, '__call__'):
+            raise TypeError("cov must be callable")
+        if not hasattr(self.mean, '__call__'):
+            raise TypeError("mean must be callable")
         if not isinstance(points, np.ndarray):
             raise TypeError("points must be a numpy array")
 
-        cov_mat = cov_func(points, points)
-        m_v = np.array([mean_func(point) for point in points.T.tolist()])
-        mean_vector = m_v.reshape((m_v.size,))
+        cov_mat = self.cov(points, points)
+        m_v = np.array([self.mean(point) for point in points.tolist()])
+        mean_vector = m_v.reshape(-1)
         if not (seed is None):
             np.random.seed(seed)
         res = np.random.multivariate_normal(mean_vector, cov_mat)

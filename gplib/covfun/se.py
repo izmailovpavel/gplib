@@ -1,6 +1,6 @@
 import numpy as np
 
-from .cov_family import StationaryCovarianceFamily
+from .cov_base import StationaryCovarianceFamily
 from .utility import pairwise_distance, stationary_cov, gaussian_noise_term
 
 
@@ -57,5 +57,5 @@ class SE(StationaryCovarianceFamily):
         return 2 * self.sigma_f * np.exp(-r**2 / (2*(self.l**2)))
 
     def get_derivative_function_list(self, params):
-        se = SquaredExponential(params)
+        se = SE(params)
         return [se._dse_dsigmaf, se._dse_dl]

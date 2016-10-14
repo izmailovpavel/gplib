@@ -1,6 +1,6 @@
 import numpy as np
 
-from .cov_family import StationaryCovarianceFamily
+from .cov_base import StationaryCovarianceFamily
 from .utility import pairwise_distance, stationary_cov, gaussian_noise_term
 
 

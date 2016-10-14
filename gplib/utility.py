@@ -1,8 +1,9 @@
 """ 
 Utility functions, used by different methods
 """
+import numpy as np
 
-def _svi_lower_triang_mat_to_vec(mat):
+def _lower_triang_mat_to_vec(mat):
         """
         Transforms a lower-triangular matrix to a vector of it's components, that are lower than the main diagonal
         :param mat: lower-triangular matrix
@@ -12,7 +13,7 @@ def _svi_lower_triang_mat_to_vec(mat):
         vec = mat[indices]
         return vec
 
-def _svi_lower_triang_vec_to_mat(vec):
+def _lower_triang_vec_to_mat(vec):
         """
         Transforms a vector similar to the ones, produced by _svi_lower_triang_mat_to_vec, to a lower-diagonal matrix
         :param vec: a vector of the lower-triangular matrix' components, that are lower than the main diagonal
@@ -36,3 +37,14 @@ def _get_inv_logdet_cholesky(mat):
         mat_inv = L_inv.T.dot(L_inv)
         mat_logdet = np.sum(np.log(np.diag(L))) * 2
         return mat_inv, mat_logdet
+
+def _extract_and_delete(dictionary, key, default_value):
+    """
+    If the given key exists in the dictionary, returns it's value; otherwise returns default_value
+    """
+    ans = default_value
+    if not dictionary is None:
+        if key in dictionary.keys():
+            ans = dictionary[key]
+            del dictionary[key]
+    return ans
