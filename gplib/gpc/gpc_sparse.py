@@ -103,18 +103,22 @@ class GPCSparse(GPC):
 		self.cov.set_params(theta)
 		return res
 
-	def get_prediction_quality(self, params, X_test, y_test):
+	def get_prediction_quality(self, *args, **kwargs):
 		"""
 		Returns prediction quality on the test set for the given parameters for the
 		method
 		:param params: parameters
 		:param X_test: test set points
 		:param y_test: test set target values
+		For vi_jj_full method also required
+		:param x_tr: train set points
+        :param y_tr: train set target values
+
 		:return: prediction accuracy on test data
 		"""
 		if self.method is None:
 			raise ValueError('Model should be fitted first, as method should be specified')
-		return self.method.get_prediction_quality(self, params, X_test, y_test)
+		return self.method.get_prediction_quality(self, *args, **kwargs)
 
 
 

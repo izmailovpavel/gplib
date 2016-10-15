@@ -24,6 +24,7 @@ class VIJJMethod:
             - LBFGS-B optimizer options from scipy
         """
         self.cov = copy.deepcopy(cov)
+        self.name = 'vi_jj'
         self.method_options = method_options
         self.mydisp = _extract_and_delete(self.method_options, 'mydisp', False)
         self.max_out_iter = _extract_and_delete(self.method_options, 'max_out_iter', 20)

@@ -31,9 +31,11 @@ class VIJJFullMethod:
         self.max_out_iter = _extract_and_delete(self.method_options, 'max_out_iter', 20)
         self.num_updates = _extract_and_delete(self.method_options, 'num_updates', 3)
         if method_type == 'hybrid':
+            self.name = 'vi_jj_hybrid'
             self.is_hybrid = True
         elif method_type == 'full':
             self.is_hybrid = False
+            self.name = 'vi_jj_full'
         else:
             raise ValueError('Unknown method type')
 
@@ -140,10 +142,10 @@ class VIJJFullMethod:
 
         else:
             # self._need_compute_mu_Sigma = True
-            if mydisp:
+            if self.mydisp:
                 print('Standard mode')
             vec = np.vstack([params.reshape(-1)[:, None], xi.reshape(-1)[:, None]]).reshape(-1)
-            res, w_list, t_list = scipy_wrapper(oracle, vec, method='L-BFGS-B', mydisp=mydisp, bounds=bnds,
+            res, w_list, t_list = scipy_wrapper(oracle, vec, method='L-BFGS-B', mydisp=self.mydisp, bounds=bnds,
                                                            options=self.method_options)
             point = res['x']
             params = point[:params.size]
@@ -254,8 +256,16 @@ class VIJJFullMethod:
 
         return fun, np.array(gradient)
 
+    def get_prediction_quality(self, *args, **kwargs):
+        if self.name == 'vi_jj_full':
+            return self._full_get_prediction_quality(*args, **kwargs)
+        elif self.name == 'vi_jj_hybrid':
+            return self._hybrid_get_prediction_quality(*args, **kwargs)
+        else:
+            raise ValueError('Unknown method name:'+str(self.name))
+
     @staticmethod
-    def get_prediction_quality(gp_obj, params, x_test, y_test):
+    def _hybrid_get_prediction_quality(gp_obj, params, x_test, y_test):
         """
         Returns prediction quality on the test set for the given kernel (and inducing points) parameters for the means
         method
@@ -271,27 +281,29 @@ class VIJJFullMethod:
         predicted_y_test = new_gp.predict(x_test)
         return 1 - np.sum(y_test != predicted_y_test) / y_test.size
 
-    # def _get_prediction_quality(self, params, train_points, train_targets, test_points, test_targets):
-    #     """
-    #     Returns prediction quality on the test set for the given kernel (and inducing points) parameters for the means
-    #     method
-    #     :param params: parameters
-    #     :param test_points: test set points
-    #     :param test_targets: test set target values
-    #     :return: prediction MSE
-    #     """
-    #     new_gp = deepcopy(self)
-    #     num_params = self.cov.get_params().size
-    #     theta, xi = params[:num_params], params[num_params:][:, None]
-    #     new_gp.cov.set_params(theta)
-    #     cov_fun = new_gp.cov.covariance_function
-    #     inputs = self.inducing_inputs[0]
-    #     K_mm = cov_fun(inputs, inputs)
-    #     K_nm = cov_fun(train_points, inputs)
+    def _full_get_prediction_quality(self, gp_obj, params, x_test, y_test, x_tr, y_tr):
+        """
+        Returns prediction quality on the test set for the given kernel (and inducing points) parameters
+        for the vi_jj_hybrid
+        :param params: parameters
+        :param x_test: test set points
+        :param y_test: test set target values
+        :param x_tr: train set points
+        :param y_tr: train set target values
+        :return: prediction accuracy
+        """
+        new_gp = copy.deepcopy(gp_obj)
+        num_params = gp_obj.cov.get_params().size
+        theta, xi = params[:num_params], params[num_params:][:, None]
+        new_gp.cov.set_params(theta)
+        cov_fun = new_gp.cov.covariance_function
+        inputs = gp_obj.inducing_inputs[0]
+        K_mm = cov_fun(inputs, inputs)
+        K_nm = cov_fun(x_tr, inputs)
 
-    #     K_mm_inv, _ = _get_inv_logdet_cholesky(K_mm)
-    #     mu, Sigma = self._recompute_var_parameters(K_mm_inv, K_nm, xi, train_targets)
+        K_mm_inv, _ = _get_inv_logdet_cholesky(K_mm)
+        mu, Sigma = self._recompute_var_parameters(K_mm_inv, K_nm, xi, y_tr)
 
-    #     new_gp.inducing_inputs = (new_gp.inducing_inputs[0], mu, Sigma)
-    #     predicted_y_test = new_gp.predict(test_points)
-    #     return 1 - np.sum(test_targets != predicted_y_test) / test_targets.size
+        new_gp.inducing_inputs = (new_gp.inducing_inputs[0], mu, Sigma)
+        predicted_y_test = new_gp.predict(x_test)
+        return 1 - np.sum(y_test != predicted_y_test) / y_test.size
