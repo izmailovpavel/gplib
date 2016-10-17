@@ -19,18 +19,32 @@ class GPC(GP):
         """
         super(GPC, self).__init__(cov_obj, mean_function)
 
-    def generate_data(self, tr_points, test_points, seed=None):
+    def sample(self, X, seed=None):
         """
-        Generates data for classification from a gaussian process.
+        Samples Gaussian process values and generates binary classification labels
+        at given points X
+        """
+        targets = self._sample_normal(X, seed)
+        targets = np.sign(targets)
+        return targets[:, None]
+
+    def generate_data(self, X_tr, X_test, seed=None):
+        """
+        Generates data for classification from a Gaussian process.
         :param dim: dimensions of the generated data
-        :param tr_points: training data points
-        :param test_points: testing data points
+        :param x_tr: training data points
+        :param x_test: testing data points
+        :param seed: random seed
         :return: tuple (training data points, training labels or target values, test data points, test labels or target
         values)
         """
-        if not (seed is None):
-            np.random.seed(seed)
-        targets = self.sample(np.vstack((tr_points, test_points)), seed)
-        targets = np.sign(targets)
-        targets = targets.reshape((targets.size, 1))
-        return targets[:tr_points.shape[0], :], targets[tr_points.shape[0]:, :]
+        targets = self.sample(np.vstack((X_tr, X_test)), seed)
+        n = X_tr.shape[0]
+        return targets[:n, :], targets[n:, :]
+
+    @staticmethod
+    def get_quality(y_true, y_pred):
+        """
+        Accuracy metric
+        """
+        return 1 - np.sum(y_true != y_pred) / y_true.size

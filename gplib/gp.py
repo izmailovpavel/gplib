@@ -1,6 +1,6 @@
 import numpy as np
 import numbers
-from abc import ABCMeta
+from abc import ABCMeta, abstractmethod
 
 from .covfun import CovarianceFamily
 
@@ -24,44 +24,42 @@ class GP:
         self.cov = cov_obj
         self.mean = mean_function
 
-    def sample(self, points, seed=None):
+    def _sample_normal(self, X, seed=None):
         """
-        :param mean_func: mean function
-        :param cov_func: covariance function
-        :param points: data points
-        :return: sample gaussian process values at given points
+        Samples Gaussian process values at given points X
+        :param X: points
+        :param seed: random seed
         """
-        if not hasattr(self.cov, '__call__'):
-            raise TypeError("cov must be callable")
-        if not hasattr(self.mean, '__call__'):
-            raise TypeError("mean must be callable")
-        if not isinstance(points, np.ndarray):
-            raise TypeError("points must be a numpy array")
-
-        cov_mat = self.cov(points, points)
-        m_v = np.array([self.mean(point) for point in points.tolist()])
-        mean_vector = m_v.reshape(-1)
+        cov_mat = self.cov(X, X)
+        mean = np.array([self.mean(point) for point in X.tolist()]).reshape(-1)
         if not (seed is None):
             np.random.seed(seed)
-        res = np.random.multivariate_normal(mean_vector, cov_mat)
+        res = np.random.multivariate_normal(mean, cov_mat)
         return res
 
-    @staticmethod
-    def sample_for_matrices(mean_vec, cov_mat, rnd=None):
+    @abstractmethod
+    def sample(self, X, seed=None):
         """
-        :param mean_vec: mean vector
-        :param cov_mat: cavariance matrix
-        :return: sample gaussian process values at given points
+        Samples values from the particular model at given points X
+        :param X: points
+        :param seed: random seed
         """
-        if not (isinstance(mean_vec, np.ndarray) and
-                isinstance(cov_mat, np.ndarray)):
-            raise TypeError("points must be a numpy array")
-        if rnd is None or (isinstance(rnd, bool) and rnd == False):
-            upper_bound = mean_vec + 3 * np.sqrt(np.diagonal(cov_mat).reshape(mean_vec.shape))
-            lower_bound = mean_vec - 3 * np.sqrt(np.diagonal(cov_mat).reshape(mean_vec.shape))
-            return mean_vec, upper_bound, lower_bound
-        else:
-            if isinstance(rnd, numbers.Number):
-                np.random.seed(rnd)
-            y = np.random.multivariate_normal(mean_vec.reshape(-1), cov_mat)
-            return y
+        pass
+
+    @abstractmethod
+    def fit(self, X, y):
+        """
+        Fits the Gaussian process to the data
+        :param X: train data points
+        :param y: target values
+        """
+        pass
+
+    @abstractmethod
+    def predict(self, X_test):
+        """
+        Predicts the answers at test points
+        :param X_test: test data points
+        """
+        pass
+

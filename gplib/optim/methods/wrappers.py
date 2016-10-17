@@ -7,7 +7,6 @@ import numpy as np
 import scipy.optimize as op
 import climin
 from ..utility import eig_val_correction, generate_constraint_matrix, project_into_bounds
-from climin.util import iter_minibatches
 
 
 def scipy_wrapper(oracle, point, mydisp=False, print_freq=1, jac=True, **kwargs):
@@ -39,7 +38,7 @@ def scipy_wrapper(oracle, point, mydisp=False, print_freq=1, jac=True, **kwargs)
     return out, w_list, time_list
 
 
-def climin_wrapper(oracle, point, train_points, train_targets, options, method='AdaDelta'):
+def climin_wrapper(oracle, point, options, method='AdaDelta'):
     """
     A wrapper function for climin optimization library
     :param oracle: function, being optimized or a tuple (function, gradient)
@@ -54,12 +53,12 @@ def climin_wrapper(oracle, point, train_points, train_targets, options, method='
     options = default_options
 
     w = point.copy()
-    data = ((i, {}) for i in iter_minibatches([train_points, train_targets], options['batch_size'], [0, 0]))
+    # data = ((i, {}) for i in iter_minibatches([train_points, train_targets], options['batch_size'], [0, 0]))
 
     if method == 'AdaDelta':
-        opt = climin.Adadelta(wrt=w, fprime=oracle, args=data, step_rate=options['step_rate'])
+        opt = climin.Adadelta(wrt=w, fprime=oracle, step_rate=options['step_rate'])
     elif method == 'SG':
-        opt = climin.GradientDescent(wrt=w, fprime=oracle, args=data, step_rate=options['step_rate'])
+        opt = climin.GradientDescent(wrt=w, fprime=oracle, step_rate=options['step_rate'])
     else:
         raise ValueError('Unknown optimizer')
 
@@ -67,8 +66,9 @@ def climin_wrapper(oracle, point, train_points, train_targets, options, method='
     time_lst = [0.]
     start = time.time()
     n_epochs = options['maxiter']
-    n_iterations = int(n_epochs * train_targets.size / options['batch_size'])
-    print_freq = int(options['print_freq'] * train_targets.size / options['batch_size'])
+    train_size = options['train_size']
+    n_iterations = int(n_epochs * train_size / options['batch_size'])
+    print_freq = int(options['print_freq'] * train_size / options['batch_size'])
 
     if options['verbose']:
         print('Using ' + method + ' optimizer')
@@ -78,9 +78,9 @@ def climin_wrapper(oracle, point, train_points, train_targets, options, method='
             break
         if not (i % print_freq) and options['verbose']:
             grad = info['gradient']
-            print("Iteration ", int(i * options['batch_size'] / train_targets.size), ":")
+            print("Iteration ", int(i * options['batch_size'] / train_size), ":")
             print("\tGradient norm", np.linalg.norm(grad))
-        if not i % int(train_targets.size / options['batch_size']):
+        if not i % int(train_size / options['batch_size']):
             w_lst.append(w.copy())
             time_lst.append(time.time() - start)
 

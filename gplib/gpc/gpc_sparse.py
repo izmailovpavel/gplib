@@ -8,16 +8,18 @@ from sklearn.cluster import KMeans
 
 from .gpc_base import GPC
 from ..covfun.utility import sigmoid
-from .gpc_svi import SVIMethod
-from .gpc_vi_jj import VIJJMethod
-from .gpc_vi_taylor import VITaylorMethod
-from .gpc_vi_jj_full import VIJJFullMethod
+from ..utility import _extract_and_delete
+from ..optim.utility import check_gradient
 from ..gpres import GPRes
+from ..gp_sparse import GPSparse
+from .jj import JJ, JJfull, JJhybrid
+from .taylor import Taylor
+from .svi import SVI
 
 
-class GPCSparse(GPC):
+class GPCSparse(GPC, GPSparse):
 	"""
-	A basic method for GP-classification, based on Laplace integral approximation
+	Sparse GP-classification class
 	"""
 	
 	def __init__(self, cov_obj, mean_function=lambda x: 0, inputs=None):
@@ -26,35 +28,8 @@ class GPCSparse(GPC):
 		:param mean_function: function, mean of the gaussian process
 		:param inputs: number of inducing inputs or inputs themselves
 		"""
-		super(GPCSparse, self).__init__(cov_obj, mean_function)
-
-		# A tuple: inducing inputs, and parameters of gaussian distribution at these points (mean and covariance)
-		if isinstance(inputs, np.ndarray):
-			self.inducing_inputs = inputs, None, None
-			self.m = inputs.shape[0]
-		elif isinstance(inputs, numbers.Integral):
-			self.inducing_inputs = None
-			self.m = inputs
-		else:
-			raise TypeError('inputs must be either a number or a numpy.ndarray')
-
-		self.method = None
-
-	def _get_method(self, method_name, method_options):
-		if not method_name in ['vi_taylor', 'vi_jj', 'vi_jj_full', 'vi_jj_hybrid', 'svi']:
-			raise ValueError('Unknown method: ' + str(method))
-
-		if method_name == 'svi':
-			method = SVIMethod(self.cov, method_options)
-		elif method_name == 'vi_jj':
-			method = VIJJMethod(self.cov, method_options)
-		elif method_name == 'vi_taylor':
-			method = VITaylorMethod(self.cov, method_options)
-		elif method_name == 'vi_jj_full':
-			method = VIJJFullMethod(self.cov, method_options, method_type='full')
-		elif method_name == 'vi_jj_hybrid':
-			method = VIJJFullMethod(self.cov, method_options, method_type='hybrid')
-		return method
+		GPSparse.__init__(self, cov_obj, mean_function, inputs)
+		self.elbo = None
 
 	def predict(self, test_points):
 		"""
@@ -65,17 +40,19 @@ class GPCSparse(GPC):
 		:param test_points: test points
 		:return: predicted values at inducing points
 		"""
-		ind_points, expectation, covariance = self.inducing_inputs
-		cov_fun = self.cov
-		K_xm = cov_fun(test_points, ind_points)
-		K_mm = cov_fun(ind_points, ind_points)
+		ind_points, expectation, covariance = self.inputs
+		# print(expectation[:3])
+		if expectation is None or covariance is None:
+			raise ValueError('Model is not fitted')
+		K_xm = self.cov(test_points, ind_points)
+		K_mm = self.cov(ind_points, ind_points)
 		K_mm_inv = np.linalg.inv(K_mm)
 
 		new_mean = K_xm.dot(K_mm_inv.dot(expectation))
 
 		return np.sign(new_mean)
 
-	def fit(self, X, y, method='vi_jj', method_options={}):
+	def fit(self, X, y, method='vi_jj', options={}):
 		"""
 		Fit the sparse gpc model to the data
 		:param X: training points
@@ -88,37 +65,37 @@ class GPCSparse(GPC):
 			- 'svi'		
 		"""
 
-		# if no inducing inputs are provided, we use K-Means cluster centers as inducing inputs
-		if self.inducing_inputs is None:
-			means = KMeans(n_clusters=self.m)
-			means.fit(X)
-			self.inducing_inputs = means.cluster_centers_, None, None
+		self.init_inputs(X)
 
-		# Initializing required variables
+		mydisp = _extract_and_delete(options, 'mydisp', 5)
+		if method == 'vi_jj':
+			maxiter = _extract_and_delete(options, 'maxiter', 100)
+			n_upd = _extract_and_delete(options, 'n_upd', 5)
+			self.elbo = JJ(X, y, self.inputs[0], self.cov)
+			res = self._fit_blockwise(self.elbo, maxiter, n_upd, options)
+		elif method == 'vi_taylor':
+			maxiter = _extract_and_delete(options, 'maxiter', 100)
+			n_upd = _extract_and_delete(options, 'n_upd', 5)
+			self.elbo = Taylor(X, y, self.inputs[0], self.cov)
+			res = self._fit_blockwise(self.elbo, maxiter, n_upd, options)
+		elif method == 'vi_jj_full':
+			self.elbo = JJfull(X, y, self.inputs[0], self.cov)
+			res = self._fit_simple(self.elbo, options)
+		elif method == 'vi_jj_hybrid':
+			maxiter = _extract_and_delete(options, 'maxiter', 100)
+			n_upd = _extract_and_delete(options, 'n_upd', 5)
+			self.elbo = JJhybrid(X, y, self.inputs[0], self.cov)
+			res = self._fit_blockwise(self.elbo, maxiter, n_upd, options)
+		elif method == 'svi':
+			batch_size = _extract_and_delete(options, 'batch_size', y.size/100)
+			self.elbo = SVI(X, y, self.inputs[0], self.cov, batch_size)
+			options['train_size'] = y.size
+			res = self._fit_simple(self.elbo, options, method='AdaDelta')
+		else:
+			raise ValueError('Unknown method: ' + str(method))
 
-		self.method = self._get_method(method, method_options)
-
-		inducing_inputs, theta, res = self.method.fit(X, y, self.inducing_inputs[0])
-		self.inducing_inputs = inducing_inputs
-		self.cov.set_params(theta)
 		return res
 
-	def get_prediction_quality(self, *args, **kwargs):
-		"""
-		Returns prediction quality on the test set for the given parameters for the
-		method
-		:param params: parameters
-		:param X_test: test set points
-		:param y_test: test set target values
-		For vi_jj_full method also required
-		:param x_tr: train set points
-        :param y_tr: train set target values
-
-		:return: prediction accuracy on test data
-		"""
-		if self.method is None:
-			raise ValueError('Model should be fitted first, as method should be specified')
-		return self.method.get_prediction_quality(self, *args, **kwargs)
 
 
 
