@@ -4,92 +4,96 @@ import cvxopt
 
 from ..linesearch import armiho
 from ..utility import project_into_bounds, eig_val_correction, approximate_hessian, generate_constraint_matrix
+from .optimizer_base import OptimizerBase
 
-def proj_newton(oracle, point, bounds=None, options=None):
+class ProjNewton(OptimizerBase):
     """
-    Projected Newton method for bound-constrained problems.
-    :param oracle: Oracle function, returning the function value, the gradient and the hessian the given point. If it
-    doesn't provide a hessian, a finite difference is used to approximate it.
-    :param point: starting point for the method
-    :param bounds: bounds on the variables
-    :param options: a dictionary, containing some of the following fields
-        'maxiter': maximum number of iterations
-        'verbose': a boolean, showing weather or not to print the convergence info
-        'print_freq': the frequency of the convergence messages
-        'g_tol': the tolerance wrt gradient. If the gradient at the current point is
-        smaller than the tolerance, the method stops
-        'step_tol': the tolerance wrt the step length. If the step length at current
-        iteration is less than tolerance, the method stops.
-        'maxstep': the maximum allowed step length
-        'qp_abstol': the tolerance for the qp sub-problem
-    default options: {'maxiter': 1000, 'print_freq':10, 'verbose': False, 'g_tol': 1e-5, 'step_tol': 1e-16,
-                       'maxstep': 1.0}
-    :return:
+    Projected Newton method for bound-constrained problems. Uses finite-difference Hessian
+    approximation if it is not provided. Uses Armiho rule for line search.
     """
-    default_options = {'maxiter': 1000, 'print_freq':10, 'verbose': False, 'g_tol': 1e-5, 'step_tol': 1e-16,
-                       'maxstep': 1, 'qp_abstol':1e-5}
-    if not options is None:
-        default_options.update(options)
-        if 'print_freq' in options.keys():
-            default_options['verbose'] = True
-    options = default_options
 
-    step = 1.0
-    x = np.copy(point)[:, None]
-    loss_fun = lambda w: oracle(w)[0]
-    x_lst = [np.copy(x)]
-    time_lst = [0]
-    start = time.time()
+    def __init__(self, disp=False, maxiter=1000, gtol=1e-5, step_tol=1e-16, maxstep=1e3, 
+                 qp_abstol=1e-5):
+        """
+        :param maxiter: maximum number of iterations
+        :param gtol: method stops, when projection of each component of the gradient
+                on the set is less than gtol.
+        :param step_tol: method stops, when the step (chosen by linesearch) becomes 
+                smaller than step_tol
+        :param maxstep: maximum step length of the method
+        :param qp_abstol: the tolerance for the qp sub-problem
+        """
+        OptimizerBase.__init__(self, disp)
+        self.maxiter = maxiter
+        self.gtol = gtol
+        self.step_tol = step_tol
+        self.maxstep = maxstep
+        self.qp_abstol = qp_abstol
 
-    for i in range(options['maxiter']):
-        x = project_into_bounds(x, bounds)
-        oracle_answer = oracle(x)
+    def minimize(self, fun, x_0, bounds=None):
+        step = 1.0
+        x = np.copy(x_0)
+        x = x.reshape(x.size, 1)
+        loss_fun = lambda w: fun(w)[0]
+        x_lst = [np.copy(x)]
+        time_lst = [0]
+        start = time.time()
 
-        if len(oracle_answer) == 3:
-            loss, grad, hess = oracle_answer
-        elif len(oracle_answer) == 2:
-            loss, grad = oracle_answer
-            hess = eig_val_correction(approximate_hessian(oracle, point), eps=1e-5)
-        else:
-            raise ValueError('Oracle must return 2 or 3 values')
+        for i in range(self.maxiter):
+            x = project_into_bounds(x, bounds)
+            oracle_answer = fun(x)
 
-        if np.linalg.norm(grad) < options['g_tol']:
-            if options['verbose']:
-                print("Gradient norm reached the stopping criterion")
-            break
+            if len(oracle_answer) == 3:
+                loss, grad, hess = oracle_answer
+            elif len(oracle_answer) == 2:
+                loss, grad = oracle_answer
+                hess = eig_val_correction(approximate_hessian(fun, x), eps=1e-5)
+            else:
+                raise ValueError('Oracle must return 2 or 3 values')
 
-        hess = hess.astype(float)
-        grad = grad.astype(float)
+            if np.max(np.abs(project_into_bounds(x + grad, bounds) - x)) < self.gtol:
+                if self.disp:
+                    print("Gradient projection reached the stopping criterion")
+                break
 
-        # The qp-subproblem
-        P = hess
-        q = grad
-        G, h = generate_constraint_matrix(bounds, x)
-        P, q = cvxopt.matrix(P), cvxopt.matrix(q)
-        if not (G is None):
-            G, h = cvxopt.matrix(G), cvxopt.matrix(h)
-        cvxopt.solvers.options['show_progress'] = False
-        cvxopt.solvers.options['maxiters'] = options['maxiter']
-        cvxopt.solvers.options['abstol'] = options['qp_abstol']
-        if not (G is None):
-            solution = cvxopt.solvers.qp(P, q, G, h)
-        else:
-            solution = cvxopt.solvers.qp(P, q)
-        dir = np.array(solution['x'])
+            hess = hess.astype(float)
+            grad = grad.astype(float)
 
-        # step
-        x, step = armiho(fun=loss_fun, gradient=grad, point_loss=loss, bounds=bounds, point=x,
-                                     step_0=1.0, maxstep=options['maxstep'], direction=dir)
-        x_lst.append(np.copy(x))
-        time_lst.append(time.time() - start)
-        if step < options['step_tol']:
-            if options['verbose']:
-                print("Step length reached the stopping criterion")
-            break
+            # The qp-subproblem
+            P = hess
+            q = grad
+            G, h = generate_constraint_matrix(bounds, x)
+            P, q = cvxopt.matrix(P), cvxopt.matrix(q)
+            if not (G is None):
+                G, h = cvxopt.matrix(G), cvxopt.matrix(h)
+            cvxopt.solvers.options['show_progress'] = False
+            # cvxopt.solvers.options['maxiters'] = options['maxiter']
+            cvxopt.solvers.options['abstol'] = self.qp_abstol
+            if not (G is None):
+                solution = cvxopt.solvers.qp(P, q, G, h)
+            else:
+                solution = cvxopt.solvers.qp(P, q)
+            direction = np.array(solution['x'])
 
-        if not (i % options['print_freq']) and options['verbose']:
-            print("Iteration ", i, ":")
-            print("\tGradient norm", np.linalg.norm(grad))
-            print("\tFunction value", loss)
+            # step
+            x, step = armiho(fun=loss_fun, gradient=grad, point_loss=loss, bounds=bounds, point=x,
+                                         step_0=1.0, maxstep=self.maxstep, direction=direction)
+            x_lst.append(np.copy(x))
+            time_lst.append(time.time() - start)
+            
+            if step < self.step_tol:
+                if self.disp:
+                    print("Step length reached the stopping criterion")
+                break
 
-    return x, x_lst, time_lst
+            if not (i % self.print_freq) and self.disp:
+                print("Iteration ", i, ":")
+                print("\tGradient projection norm", 
+                      np.linalg.norm(project_into_bounds(x + grad, bounds) - x))
+                print("\tFunction value", loss)
+
+        stat_dict = {'time_lst': time_lst, 'x_lst': x_lst, 'fun': loss, 'time': time_lst[-1], 
+                     'info': {'grad_proj_norm': np.linalg.norm(project_into_bounds(x + grad, bounds) - x),
+                               'grad': np.copy(grad), 'step': step}}
+
+        return x.copy(), stat_dict

@@ -6,82 +6,111 @@ import time
 import numpy as np
 import scipy.optimize as op
 import climin
+
 from ..utility import eig_val_correction, generate_constraint_matrix, project_into_bounds
+from .optimizer_base import OptimizerBase
 
-
-def scipy_wrapper(oracle, point, mydisp=False, print_freq=1, jac=True, **kwargs):
+class LBFGS(OptimizerBase):
     """
-    A wrapper function for scipy.optimize.minimize
-    :param oracle: function, being optimized or a tuple (function, gradient)
-    :param point: initial point of optimization
+    A wrapper-class for L-BFGS-B method from scipy.optimize. Requires function value and gradient.
     """
-    aux = {'start': time.time(), 'total': 0., 'it': 0}
+    def __init__(self, disp=False, maxiter=15000, maxfun=15000, gtol=1e-5, ftol=2.220446049250313e-09, 
+                 maxls=20, maxcor=10):
+        """
+        :param disp: determines the method output.
+        Other parameters are the options of scipy.optimize.minimize method for L-BFGS-B
+        :param maxiter: maximum number of iterations
+        :param maxfun: maximum number of function calls
+        :param gtol: method stops, when projection of each component of the gradient
+                on the set is less than gtol.
+        :param frol: the method stops when (f^k - f^{k+1})/max{|f^k|,|f^{k+1}|,1} <= ftol.
+        :param maxcor: maximum number of variable metric corrections used to define the limited memory matrix
+        """
+        self.maxiter = maxiter
+        self.maxfun = maxfun
+        self.gtol = gtol
+        self.ftol = ftol
+        self.maxcor = maxcor
+        OptimizerBase.__init__(self, disp)
 
-    def callback(w):
-        aux['total'] += time.time() - aux['start']
-        if mydisp and not (aux['it'] % print_freq):
-            print("Hyper-parameters at iteration", aux['it'], ":", w.reshape(-1)[:5])
-            # if w.size > 5:
-            #     print('...')
-        time_list.append(aux['total'])
-        w_list.append(np.copy(w))
-        aux['it'] += 1
-        aux['start'] = time.time()
-        # if aux['it'] == kwargs['options']['maxiter']:
-        #     return np.copy(w), w_list, time_list
-    w_list = []
-    time_list = []
-    callback(point)
+    def minimize(self, fun, x_0, bounds=None):
 
-    out = op.minimize(oracle, point, jac=jac, callback=callback, **kwargs)
+        aux = {'start': time.time(), 'total': 0., 'it': 0}
 
-    return out, w_list, time_list
+        def callback(x):
+            aux['total'] += time.time() - aux['start']
+            if self.disp and not (aux['it'] % self.print_freq):
+                print('Iteration', aux['it'], ':')
+                print('\tx', x.reshape(-1)[:5])
+            time_list.append(aux['total'])
+            x_list.append(np.copy(x))
+            aux['it'] += 1
+            aux['start'] = time.time()
+
+        x_list = []
+        time_list = []
+        callback(x_0)
+        opts = {'disp': False, 'iprint': -1, 'gtol': self.gtol, 'eps': 1e-08, \
+                'maxiter': self.maxiter, 'ftol': self.ftol, 'maxfun': self.maxfun}
+        out = op.minimize(fun, x_0, method='L-BFGS-B', jac=True, callback=callback, options=opts)
+
+        x = out.x
+        stat_dict = {'time_lst': time_list, 'x_lst': x_list, 'fun': out.fun, 'time': time_list[-1], 
+                     'info': out}
+        return x.copy(), stat_dict
 
 
-def climin_wrapper(oracle, point, options, method='AdaDelta'):
+class AdaDelta(OptimizerBase):
     """
-    A wrapper function for climin optimization library
-    :param oracle: function, being optimized or a tuple (function, gradient)
-    :param point: initial point of optimization
+    A wrapper-class for AdaDelta method from climin library. Requires gradient estimation.
     """
-    default_options = {'maxiter': 1000, 'print_freq':1, 'verbose': False, 'g_tol': 1e-5,
-                       'batch_size': 10, 'step_rate': 0.1}
-    if not options is None:
-        default_options.update(options)
-        if 'print_freq' in options.keys():
-            default_options['verbose'] = True
-    options = default_options
+    def __init__(self, disp=False, iter_per_epoch=1, n_epoch=1000, step_rate=1., decay=0.9, 
+        momentum=0., offset=1e-4):
+        """
+        :param iter_per_epoch: number of iteration per epoch
+        :param n_epoch: maximum number of epochs (or iterations if no sample_size is provided)
+        The names of the other parameters are the same as in the corresponding climin method 
+        :param step_rate: step size of the method
+        :param decay: decay of the moving avrage; must lie in [0, 1)
+        :param momentum: momentum
+        :param offset: added before taking the sqrt of running averages
+        """
+        OptimizerBase.__init__(self, disp)
+        self.n_epoch = n_epoch
+        self.iter_per_epoch = iter_per_epoch
+        self.maxiter = int(self.n_epoch * self.iter_per_epoch)
+        self.print_freq = int(self.print_freq * self.iter_per_epoch)
+        self.step_rate = step_rate
+        self.decay = decay
+        self.momentum = momentum
+        self.offset = offset
 
-    w = point.copy()
-    # data = ((i, {}) for i in iter_minibatches([train_points, train_targets], options['batch_size'], [0, 0]))
+    def minimize(self, fun, x_0, bounds=None):
+        """
+        Does not take bounds into account
+        """
+        x = np.copy(x_0).reshape(-1)
+        opt = climin.Adadelta(wrt=x, fprime=fun, step_rate=self.step_rate, momentum=self.momentum,
+                              decay=self.decay, offset=self.offset)
 
-    if method == 'AdaDelta':
-        opt = climin.Adadelta(wrt=w, fprime=oracle, step_rate=options['step_rate'])
-    elif method == 'SG':
-        opt = climin.GradientDescent(wrt=w, fprime=oracle, step_rate=options['step_rate'])
-    else:
-        raise ValueError('Unknown optimizer')
+        x_list = [x.copy()]
+        time_list = [0.]
+        start = time.time()
 
-    w_lst = [w.copy()]
-    time_lst = [0.]
-    start = time.time()
-    n_epochs = options['maxiter']
-    train_size = options['train_size']
-    n_iterations = int(n_epochs * train_size / options['batch_size'])
-    print_freq = int(options['print_freq'] * train_size / options['batch_size'])
+        for info in opt:
+            i = info['n_iter']
+            if i > self.maxiter:
+                break
+            if not (i % self.print_freq) and self.disp:
+                grad = info['gradient']
+                print('Epoch', int(i / self.iter_per_epoch), ':')
+                print('\tx', x.reshape(-1)[:5])
+                print("\tGradient norm", np.linalg.norm(grad))
+            if not i % int(self.iter_per_epoch):
+                x_list.append(x.copy())
+                time_list.append(time.time() - start)
 
-    if options['verbose']:
-        print('Using ' + method + ' optimizer')
-    for info in opt:
-        i = info['n_iter']
-        if i > n_iterations:
-            break
-        if not (i % print_freq) and options['verbose']:
-            grad = info['gradient']
-            print("Iteration ", int(i * options['batch_size'] / train_size), ":")
-            print("\tGradient norm", np.linalg.norm(grad))
-        if not i % int(train_size / options['batch_size']):
-            w_lst.append(w.copy())
-            time_lst.append(time.time() - start)
+        stat_dict = {'time_lst': time_list, 'x_lst': x_list, 'fun': None, 'time': time_list[-1], 
+                     'info': info}
 
-    return w.copy(), w_lst, time_lst
+        return x.copy(), stat_dict
