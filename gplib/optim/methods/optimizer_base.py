@@ -14,7 +14,7 @@ class OptimizerBase:
 		"""
 		self.disp = disp
 		self.print_freq = int(disp)
-		if isinstance(self.disp, numbers.Integral):
+		if not isinstance(self.disp, bool) and isinstance(self.disp, numbers.Integral):
 			self.print_freq = disp
 			self.disp = True
 

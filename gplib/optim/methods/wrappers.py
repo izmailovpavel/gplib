@@ -101,11 +101,13 @@ class AdaDelta(OptimizerBase):
             i = info['n_iter']
             if i > self.maxiter:
                 break
-            if not (i % self.print_freq) and self.disp:
-                grad = info['gradient']
-                print('Epoch', int(i / self.iter_per_epoch), ':')
-                print('\tx', x.reshape(-1)[:5])
-                print("\tGradient norm", np.linalg.norm(grad))
+            
+            if self.disp and not (i % self.print_freq):
+                    grad = info['gradient']
+                    print('Epoch', int(i / self.iter_per_epoch), ':')
+                    print('\tx', x.reshape(-1)[:5])
+                    print("\tGradient norm", np.linalg.norm(grad))
+            
             if not i % int(self.iter_per_epoch):
                 x_list.append(x.copy())
                 time_list.append(time.time() - start)

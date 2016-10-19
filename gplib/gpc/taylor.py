@@ -6,7 +6,6 @@ from scipy.special import expit
 
 from ..utility import _extract_and_delete, _get_inv_logdet_cholesky
 from ..optim.utility import check_gradient
-from ..optim.methods import scipy_wrapper
 from ..gpres import GPRes
 from .taylor_base import TaylorBase
 
@@ -22,7 +21,7 @@ class Taylor(TaylorBase):
         :param inputs: inducing inputs (positions)
         :param cov: covariance function
 		"""
-		TaylorBase.__init__(self, X, y, inputs, cov)
+		TaylorBase.__init__(self, X, y, inputs, cov, 'Taylor')
 		m = inputs.shape[0]
 		self.mu = np.zeros((m,1))
 		self.Sigma = np.eye(m)

@@ -15,6 +15,7 @@ from ..gp_sparse import GPSparse
 from .jj import JJ, JJfull, JJhybrid
 from .taylor import Taylor
 from .svi import SVI
+from ..optim.methods import LBFGS, AdaDelta, ProjNewton, FGD
 
 
 class GPCSparse(GPC, GPSparse):
@@ -52,45 +53,75 @@ class GPCSparse(GPC, GPSparse):
 
 		return np.sign(new_mean)
 
-	def fit(self, X, y, method='vi_jj', options={}):
+	def fit(self, X, y, method='JJ', options={}):
 		"""
 		Fit the sparse gpc model to the data
 		:param X: training points
 		:param y: training labels
 		:param method: A string, representing the chosen method of training the model
-			- 'vi_taylor'
-			- 'vi_jj'
-			- 'vi_jj_full'
-			- 'vi_jj_hybrid'
-			- 'svi'		
+			- 'Taylor'
+			- 'JJ'
+			- 'JJ_full'
+			- 'JJ_hybrid'
+			- 'svi'
+		:param options: A fictionary with fields 
+			- 'optimizer' — OptimizerBase object or name of an Optimization method
+				- 'L-BFGS-B'
+				— 'Projected Newton'
+				— 'FGD'
+				- 'AdaDelta' — Only for 'svi'
+			If a string is passed, method is used with default parameters for the given method.
+			If you want to choose specific parameters of the methods pass an OptimizerBas
+			- 'n_upd'=5 — number of recomputes (only for 'JJ_hybrid', 'JJ', 'Taylor')
+			- 'maxiter'=100 — maximum number of outter iterations (only for 'JJ_hybrid', 
+			'JJ', 'Taylor')
+			- 'batch_size'=y.size/100 — batch size (only for svi+AdaDelta)
+			- 'disp'=False — number (frequency of printing) or bool, indicating wether or not
+			to print progress
 		"""
-
+		batch_size = None
+		if method in ['JJ_full', 'JJ_hybrid', 'JJ', 'Taylor']:
+			optimizer = _extract_and_delete(options, 'optimizer', 'L-BFGS-B')
+		elif method in ['svi']:
+			optimizer = _extract_and_delete(options, 'optimizer', 'AdaDelta')
+		else:
+			raise ValueError('Unknown method name:'+method)
+		if isinstance(optimizer, str):
+			if optimizer == 'L-BFGS-B':
+				optimizer = LBFGS(maxfun=5)
+			elif optimizer == 'Projected Newton':
+				optimizer = ProjNewton(maxiter=5)
+			elif optimizer == 'FGD':
+				optimizer = FGD(maxiter=5)
+			elif optimizer == 'AdaDelta':
+				batch_size = _extract_and_delete(options, 'batch_size', int(y.size/100))
+				optimizer = AdaDelta(n_epoch=100, iter_per_epoch=y.size/batch_size)
+			else:
+				raise ValueError('Unknown optimizer name:'+optimizer)
+	
+		n_upd = _extract_and_delete(options, 'n_upd', 5)
+		maxiter = _extract_and_delete(options, 'maxiter', 100)
+		disp = _extract_and_delete(options, 'disp', False)
+		
 		self.init_inputs(X)
 
-		mydisp = _extract_and_delete(options, 'mydisp', 5)
-		if method == 'vi_jj':
-			maxiter = _extract_and_delete(options, 'maxiter', 100)
-			n_upd = _extract_and_delete(options, 'n_upd', 5)
+		if method == 'JJ':
 			self.elbo = JJ(X, y, self.inputs[0], self.cov)
-			res = self._fit_blockwise(self.elbo, maxiter, n_upd, options)
-		elif method == 'vi_taylor':
-			maxiter = _extract_and_delete(options, 'maxiter', 100)
-			n_upd = _extract_and_delete(options, 'n_upd', 5)
+			res = self._fit_blockwise(self.elbo, optimizer, n_upd, maxiter, disp)
+		elif method == 'Taylor':
 			self.elbo = Taylor(X, y, self.inputs[0], self.cov)
-			res = self._fit_blockwise(self.elbo, maxiter, n_upd, options)
-		elif method == 'vi_jj_full':
+			res = self._fit_blockwise(self.elbo, optimizer, n_upd, maxiter, disp)
+		elif method == 'JJ_full':
 			self.elbo = JJfull(X, y, self.inputs[0], self.cov)
-			res = self._fit_simple(self.elbo, options)
-		elif method == 'vi_jj_hybrid':
-			maxiter = _extract_and_delete(options, 'maxiter', 100)
-			n_upd = _extract_and_delete(options, 'n_upd', 5)
+			res = self._fit_simple(self.elbo, optimizer)
+		elif method == 'JJ_hybrid':
 			self.elbo = JJhybrid(X, y, self.inputs[0], self.cov)
-			res = self._fit_blockwise(self.elbo, maxiter, n_upd, options)
+			res = self._fit_blockwise(self.elbo, optimizer, n_upd, maxiter, disp)
 		elif method == 'svi':
-			batch_size = _extract_and_delete(options, 'batch_size', y.size/100)
+			if batch_size is None:
+				batch_size = int(y.size / optimizer.iter_per_epoch)
 			self.elbo = SVI(X, y, self.inputs[0], self.cov, batch_size)
-			options['train_size'] = y.size
-			res = self._fit_simple(self.elbo, options, method='AdaDelta')
+			res = self._fit_simple(self.elbo, optimizer)
 		else:
 			raise ValueError('Unknown method: ' + str(method))
 

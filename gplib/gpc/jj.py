@@ -6,7 +6,6 @@ from scipy.special import expit
 
 from ..utility import _extract_and_delete, _get_inv_logdet_cholesky
 from ..optim.utility import check_gradient
-from ..optim.methods import scipy_wrapper
 from ..gpres import GPRes
 from .jj_base import JJbase
 
@@ -22,7 +21,7 @@ class JJ(JJbase):
         :param inputs: inducing inputs (positions)
         :param cov: covariance function
 		"""
-		JJbase.__init__(self, X, y, inputs, cov)
+		JJbase.__init__(self, X, y, inputs, cov, 'JJ')
 		m = inputs.shape[0]
 		self.mu = np.zeros((m,1))
 		self.Sigma = np.eye(m)
@@ -68,7 +67,7 @@ class JJfull(JJbase):
         :param inputs: inducing inputs (positions)
         :param cov: covariance function
 		"""
-		JJbase.__init__(self, X, y, inputs, cov)
+		JJbase.__init__(self, X, y, inputs, cov, 'JJ-full')
 		m = inputs.shape[0]
 		self.xi = np.ones(y.size)
 
@@ -112,7 +111,7 @@ class JJhybrid(JJbase):
         :param inputs: inducing inputs (positions)
         :param cov: covariance function
 		"""
-		JJbase.__init__(self, X, y, inputs, cov)
+		JJbase.__init__(self, X, y, inputs, cov, 'JJ-hybrid')
 		m = inputs.shape[0]
 		self.mu = np.zeros((m,1))
 		self.Sigma = np.eye(m)

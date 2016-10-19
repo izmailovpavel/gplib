@@ -6,7 +6,6 @@ from climin.util import iter_minibatches
 
 from ..utility import _extract_and_delete, _lower_triang_mat_to_vec, _lower_triang_vec_to_mat, \
                       _get_inv_logdet_cholesky
-from ..optim.methods import climin_wrapper, sgd, scipy_wrapper
 from ..gpres import GPRes
 from ..elbo import ELBO
 
@@ -25,7 +24,7 @@ class SVI(ELBO):
         :param batch_size: size of the mini batch on which the ELBO is computed
         :param hermgauss_deg: degree of Gauss-Hermite approximation
         """
-        ELBO.__init__(self, X, y)
+        ELBO.__init__(self, X, y, 'svi')
         self.cov = cov
         self.inputs = inputs
         m = inputs.shape[0]
@@ -230,9 +229,9 @@ class SVI(ELBO):
         self.cov.set_params(theta)
 
     def get_bounds_opt(self):
-        bnds = list(self.cov.get_bounds())
-        bnds = np.array(bnds+ [(1e-3, np.inf)] * self.get_params().size)
-        return bnds
+        # bnds = list(self.cov.get_bounds())
+        # bnds = np.array(bnds+ [(1e-3, np.inf)] * self.get_params().size)
+        return None
 
     def get_inputs(self):
         """

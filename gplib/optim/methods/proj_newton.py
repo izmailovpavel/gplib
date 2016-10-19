@@ -34,20 +34,27 @@ class ProjNewton(OptimizerBase):
         step = 1.0
         x = np.copy(x_0)
         x = x.reshape(x.size, 1)
-        loss_fun = lambda w: fun(w)[0]
         x_lst = [np.copy(x)]
         time_lst = [0]
         start = time.time()
 
+        def new_fun(w):
+            ans = list(fun(w.reshape(-1)))
+            ans[1] = ans[1][:, None]
+            return ans[1]
+
+        loss_fun = lambda w: new_fun(w)[0]
+
         for i in range(self.maxiter):
             x = project_into_bounds(x, bounds)
-            oracle_answer = fun(x)
+            x = x.astype(float)
+            oracle_answer = new_fun(x)
 
             if len(oracle_answer) == 3:
                 loss, grad, hess = oracle_answer
             elif len(oracle_answer) == 2:
                 loss, grad = oracle_answer
-                hess = eig_val_correction(approximate_hessian(fun, x), eps=1e-5)
+                hess = eig_val_correction(approximate_hessian(new_fun, x), eps=1e-5)
             else:
                 raise ValueError('Oracle must return 2 or 3 values')
 
@@ -73,7 +80,7 @@ class ProjNewton(OptimizerBase):
                 solution = cvxopt.solvers.qp(P, q, G, h)
             else:
                 solution = cvxopt.solvers.qp(P, q)
-            direction = np.array(solution['x'])
+            direction = np.array(solution['x'], dtype=float)
 
             # step
             x, step = armiho(fun=loss_fun, gradient=grad, point_loss=loss, bounds=bounds, point=x,
@@ -86,7 +93,7 @@ class ProjNewton(OptimizerBase):
                     print("Step length reached the stopping criterion")
                 break
 
-            if not (i % self.print_freq) and self.disp:
+            if self.disp and not (i % self.print_freq):
                 print("Iteration ", i, ":")
                 print("\tGradient projection norm", 
                       np.linalg.norm(project_into_bounds(x + grad, bounds) - x))

@@ -12,13 +12,14 @@ class ELBO:
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, X, y):
+    def __init__(self, X, y, name):
         """
         :param X: data points (possibly a batch for some methods)
         :param y: target values
         """
         self.X = X
         self.y = y
+        self.name = name
 
 
     @abstractmethod
@@ -82,14 +83,3 @@ class ELBO:
         of the process at these points
         """
         pass
-
-
-    # @abstractmethod
-    # def get_prediction_quality(self, params, X_test, y_test):
-    #     """
-    #     Returns prediction quality (some metric)
-    #     :param params: parameters
-    #     :param X_test: test data points
-    #     :param y_test: test target values
-    #     """
-    #     pass

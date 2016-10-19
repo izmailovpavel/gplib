@@ -7,7 +7,6 @@ from scipy.special import expit
 
 from ..utility import _get_inv_logdet_cholesky
 from ..optim.utility import check_gradient
-from ..optim.methods import scipy_wrapper
 from ..gpres import GPRes
 from ..elbo import ELBO
 
@@ -18,14 +17,14 @@ class JJbase(ELBO):
 	"""
 	__metaclass__ = ABCMeta
 
-	def __init__(self, X, y, inputs, cov):
+	def __init__(self, X, y, inputs, cov, name):
 		"""
 		:param X: data points (possibly a batch for some methods)
 		:param y: target values
 		:param inputs: inducing inputs (positions)
 		:param cov: covariance function
 		"""
-		ELBO.__init__(self, X, y)
+		ELBO.__init__(self, X, y, name)
 		self.cov = cov
 		self.inputs = inputs
 		self.xi = None
@@ -66,6 +65,7 @@ class JJbase(ELBO):
 
 	@staticmethod
 	def _lambda(xi):
+		xi = xi.astype(float)
 		return np.tanh(xi / 2) / (4 * xi)
 
 	@staticmethod

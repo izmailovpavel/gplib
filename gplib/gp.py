@@ -46,20 +46,20 @@ class GP:
         """
         pass
 
-    @abstractmethod
-    def fit(self, X, y):
-        """
-        Fits the Gaussian process to the data
-        :param X: train data points
-        :param y: target values
-        """
-        pass
+    # @abstractmethod
+    # def fit(self, X, y):
+    #     """
+    #     Fits the Gaussian process to the data
+    #     :param X: train data points
+    #     :param y: target values
+    #     """
+    #     pass
 
-    @abstractmethod
-    def predict(self, X_test):
-        """
-        Predicts the answers at test points
-        :param X_test: test data points
-        """
-        pass
+    # @abstractmethod
+    # def predict(self, X_test):
+    #     """
+    #     Predicts the answers at test points
+    #     :param X_test: test data points
+    #     """
+    #     pass
 

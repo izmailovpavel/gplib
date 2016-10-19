@@ -53,7 +53,7 @@ class FGD(OptimizerBase):
                 if self.disp:
                     print("Step length reached the stopping criterion")
                 break
-            if not (i % self.print_freq) and self.disp:
+            if self.disp and not (i % self.print_freq):
                 print("Iteration ", i, ":")
                 print("\tGradient projection norm", 
                       np.linalg.norm(project_into_bounds(x + grad, bounds) - x))

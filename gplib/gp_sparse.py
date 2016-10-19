@@ -11,7 +11,6 @@ from .gpres import GPRes
 from .gp import GP
 from .elbo import ELBO
 from .optim.utility import check_gradient
-from .optim.methods import scipy_wrapper, climin_wrapper
 
 
 class GPSparse(GP):
@@ -50,7 +49,7 @@ class GPSparse(GP):
 			means.fit(X)
 			self.inputs = means.cluster_centers_, None, None
 
-	def _fit_simple(self, elbo, options, method='L-BFGS-B'):
+	def _fit_simple(self, elbo, optimizer):
 		"""
 		Fit model to the data using maximization of the ELBO
 		:param X: train data points
@@ -61,21 +60,14 @@ class GPSparse(GP):
 			raise TypeError('elbo should be an instance of ELBO class')
 
 		w0 = elbo.get_params_opt()
-		if method == 'L-BFGS-B':
-			bnds = elbo.get_bounds_opt()
-			res, w_list, t_list = scipy_wrapper(elbo.elbo, w0, method='L-BFGS-B', mydisp=False, bounds=bnds,
-	                                                           options=options)
-			elbo.set_params_opt(res['x'])
-		elif method == 'AdaDelta':
-			res, w_list, t_list = climin_wrapper(elbo.elbo, w0, options=options)
-			elbo.set_params_opt(res)
-		else:
-			raise ValueError('Unnknown method' + method)
+		w, stat = optimizer.minimize(elbo.elbo, w0, bounds=elbo.get_bounds_opt())
+		elbo.set_params_opt(w)
+		w_list, t_list = stat['x_lst'], stat['time_lst']
 		self.cov = elbo.cov
 		self.inputs = elbo.get_inputs()
 		return GPRes(param_lst=w_list, time_lst=t_list)
 
-	def _fit_blockwise(self, elbo, maxiter, n_upd, options):
+	def _fit_blockwise(self, elbo, optimizer, n_upd, maxiter, disp):
 		"""
 		Fit model to the data using maximization of the ELBO
 		:param X: train data points
@@ -91,12 +83,14 @@ class GPSparse(GP):
 		for i in range(maxiter):
 			elbo.recompute_parameters(n_upd)
 			w = elbo.get_params_opt()
-			res, _, _ = scipy_wrapper(elbo.elbo, w, method='L-BFGS-B', mydisp=False, bounds=bnds,
-                                                           options=options)
-			w = res['x']
+			w, stat = optimizer.minimize(elbo.elbo, w, bounds=elbo.get_bounds_opt())
 			elbo.set_params_opt(np.copy(w))
 			w_list.append(elbo.get_state())
 			t_list.append(time.time() - start)
+			if disp and not(i%disp):
+				print('Outter iteration', i, ':')
+				print('\tparameters:', w[:5])
+
 		self.cov = elbo.cov
 		self.inputs = elbo.get_inputs()
 		return GPRes(param_lst=w_list, time_lst=t_list)
